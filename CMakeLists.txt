@@ -15,6 +15,7 @@ add_library(
     netpulse_network
     STATIC
     src/network/socket.cpp
+    src/network/io.cpp
 )
 
 target_include_directories(
@@ -89,4 +90,28 @@ if(BUILD_TESTING)
         NAME socket_raii
         COMMAND socket_test
     )
+    add_executable(
+    io_test
+    tests/unit/io_test.cpp
+    )
+
+    target_link_libraries(
+        io_test
+        PRIVATE
+        netpulse_network
+    )
+
+    target_compile_options(
+        io_test
+        PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+
+    add_test(
+        NAME reliable_io
+        COMMAND io_test
+    )
+
 endif()

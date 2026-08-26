@@ -5,8 +5,12 @@
 #include <sys/socket.h>
 #include <array>
 #include <string_view>
+#include <span>
 #include "netpulse/network/socket.hpp"
+#include "netpulse/network/io.hpp"
+
 using netpulse::network::Socket;
+using netpulse::network::sendAll;
 
 namespace {
 	constexpr int kServerPort = 9000;
@@ -16,8 +20,8 @@ namespace {
 int main()
 {
 	Socket server_socket{
-		::socket(AF_INET, SOCK_STREAM, 0);
-	}
+		::socket(AF_INET, SOCK_STREAM, 0)
+	};
 
 	if (!server_socket.valid())
 	{
@@ -126,28 +130,24 @@ int main()
 
 		std::cout << std::endl;
 
-		constexpr std::string_view response = "ACK from NetPulse!\n";
+		constexpr std::string_view response{
+			"ACK from NetPulse!\n"
+		};
 
-		const ssize_t bytes_sent = ::send(
+		const auto response_bytes = std::as_bytes(
+			std::span{response.data(), response.size()});
+
+		const auto send_result = sendAll(
 			client_socket.fd(),
-			response.data(),
-			response.size(),
-			0
-		);
+			response_bytes);
 
-		if (bytes_sent < 0)
-		{
-			std::cerr << "send() failed: "
-				<< std::strerror(errno) << std::endl;
-
-
-			return 1;
-		}
-
-		if (bytes_sent != static_cast<ssize_t> (response.size()))
-		{
-			std::cerr << "send() transmitted only part of the response.\n";
-
+		if (!send_result.completed()) {
+			std::cerr
+				<< "sendAll() failed after "
+				<< send_result.bytes_transferred
+				<< " bytes, error number: "
+				<< send_result.error_number
+				<< '\n';
 
 			return 1;
 		}
