@@ -3,14 +3,17 @@
 #include <cstring>
 #include <iostream>
 #include <sys/socket.h>
-#include <array>
+
 #include <string_view>
 #include <span>
+
 #include "netpulse/network/socket.hpp"
-#include "netpulse/network/io.hpp"
+#include "netpulse/protocol/frame.hpp"
 
 using netpulse::network::Socket;
-using netpulse::network::sendAll;
+using netpulse::protocol::FrameStatus;
+using netpulse::protocol::receiveFrame;
+using netpulse::protocol::sendFrame;
 
 namespace {
 	constexpr int kServerPort = 9000;
@@ -98,62 +101,75 @@ int main()
 
 	std::cout << "Client connected.\n";
 
-	std::array<char,1024> buffer{};
+    const auto receive_result = receiveFrame(
+        client_socket.fd());
 
-	const ssize_t bytes_received = ::recv(
-		client_socket.fd(),
-		buffer.data(),
-		buffer.size(),
-		0
-	);
+    if (!receive_result.completed()) {
+        if (receive_result.status
+            == FrameStatus::peer_closed) {
+            std::cout
+                << "Client disconnected before completing a frame.\n";
+            return 0;
+        }
 
-	if (bytes_received < 0)
-	{
-		std::cerr << "recv() failed: "
-			<< std::strerror(errno) << std::endl;
+        if (receive_result.status
+            == FrameStatus::payload_too_large) {
+            std::cerr
+                << "Client sent an oversized frame.\n";
+            return 1;
+        }
 
+        std::cerr
+            << "receiveFrame() failed after "
+            << receive_result.bytes_transferred
+            << " bytes, error number: "
+            << receive_result.error_number
+            << '\n';
 
-		return 1;
-	}
+        return 1;
+    }
 
-	if (bytes_received == 0)
-	{
-		std::cout << "Client disconnetded without sending data.\n";
-	}else
-	{
-		std::cout << "Received " << bytes_received << " bytes: ";
+    std::cout
+        << "Received "
+        << receive_result.payload.size()
+        << " payload bytes: ";
 
-		std::cout.write(
-			buffer.data(),
-			static_cast <std::streamsize> (bytes_received)
-		);
+    if (!receive_result.payload.empty()) {
+        std::cout.write(
+            reinterpret_cast<const char*>(
+                receive_result.payload.data()),
+            static_cast<std::streamsize>(
+                receive_result.payload.size()));
+    }
 
-		std::cout << std::endl;
+    std::cout << '\n';
 
-		constexpr std::string_view response{
-			"ACK from NetPulse!\n"
-		};
+    constexpr std::string_view response{
+        "ACK from NetPulse!"
+    };
 
-		const auto response_bytes = std::as_bytes(
-			std::span{response.data(), response.size()});
+    const auto response_bytes = std::as_bytes(
+        std::span{
+            response.data(),
+            response.size()
+        });
 
-		const auto send_result = sendAll(
-			client_socket.fd(),
-			response_bytes);
+    const auto send_result = sendFrame(
+        client_socket.fd(),
+        response_bytes);
 
-		if (!send_result.completed()) {
-			std::cerr
-				<< "sendAll() failed after "
-				<< send_result.bytes_transferred
-				<< " bytes, error number: "
-				<< send_result.error_number
-				<< '\n';
+    if (!send_result.completed()) {
+        std::cerr
+            << "sendFrame() failed after "
+            << send_result.bytes_transferred
+            << " bytes, error number: "
+            << send_result.error_number
+            << '\n';
 
-			return 1;
-		}
+        return 1;
+    }
 
-		std::cout << "ACK sent to client.\n";
-	}
+    std::cout << "ACK frame sent to client.\n";
 
 
 	return 0;

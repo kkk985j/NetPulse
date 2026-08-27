@@ -32,6 +32,32 @@ target_compile_options(
     -Wpedantic
 )
 
+add_library(
+    netpulse_protocol
+    STATIC
+    src/protocol/frame.cpp
+)
+
+target_include_directories(
+    netpulse_protocol
+    PUBLIC
+    ${PROJECT_SOURCE_DIR}/include
+)
+
+target_link_libraries(
+    netpulse_protocol
+    PUBLIC
+    netpulse_network
+)
+
+target_compile_options(
+    netpulse_protocol
+    PRIVATE
+    -Wall
+    -Wextra
+    -Wpedantic
+)
+
 add_executable(
     netpulse_server
     apps/server/main.cpp
@@ -40,7 +66,7 @@ add_executable(
 target_link_libraries(
     netpulse_server
     PRIVATE
-    netpulse_network
+    netpulse_protocol
 )
 
 target_compile_options(
@@ -54,6 +80,12 @@ target_compile_options(
 add_executable(
     device_simulator
     tools/device_simulator/main.cpp
+)
+
+target_link_libraries(
+    device_simulator
+    PRIVATE
+    netpulse_protocol
 )
 
 target_compile_options(
@@ -112,6 +144,30 @@ if(BUILD_TESTING)
     add_test(
         NAME reliable_io
         COMMAND io_test
+    )
+
+        add_executable(
+        frame_test
+        tests/unit/frame_test.cpp
+    )
+
+    target_link_libraries(
+        frame_test
+        PRIVATE
+        netpulse_protocol
+    )
+
+    target_compile_options(
+        frame_test
+        PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+
+    add_test(
+        NAME message_framing
+        COMMAND frame_test
     )
 
 endif()
