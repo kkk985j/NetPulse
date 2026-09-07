@@ -16,6 +16,8 @@ add_library(
     STATIC
     src/network/socket.cpp
     src/network/io.cpp
+    src/network/nonblocking.cpp
+    src/network/epoll.cpp
 )
 
 target_include_directories(
@@ -36,6 +38,8 @@ add_library(
     netpulse_protocol
     STATIC
     src/protocol/frame.cpp
+    src/protocol/frame_decoder.cpp
+    src/protocol/frame_write_buffer.cpp
 )
 
 target_include_directories(
@@ -58,6 +62,33 @@ target_compile_options(
     -Wpedantic
 )
 
+add_library(
+    netpulse_server_core
+    STATIC
+    src/server/connection.cpp
+    src/server/event_loop.cpp
+)
+
+target_include_directories(
+    netpulse_server_core
+    PUBLIC
+    ${PROJECT_SOURCE_DIR}/include
+)
+
+target_link_libraries(
+    netpulse_server_core
+    PUBLIC
+    netpulse_protocol
+)
+
+target_compile_options(
+    netpulse_server_core
+    PRIVATE
+    -Wall
+    -Wextra
+    -Wpedantic
+)
+
 add_executable(
     netpulse_server
     apps/server/main.cpp
@@ -66,7 +97,7 @@ add_executable(
 target_link_libraries(
     netpulse_server
     PRIVATE
-    netpulse_protocol
+    netpulse_server_core
 )
 
 target_compile_options(
@@ -122,9 +153,10 @@ if(BUILD_TESTING)
         NAME socket_raii
         COMMAND socket_test
     )
+
     add_executable(
-    io_test
-    tests/unit/io_test.cpp
+        io_test
+        tests/unit/io_test.cpp
     )
 
     target_link_libraries(
@@ -146,7 +178,7 @@ if(BUILD_TESTING)
         COMMAND io_test
     )
 
-        add_executable(
+    add_executable(
         frame_test
         tests/unit/frame_test.cpp
     )
@@ -170,4 +202,123 @@ if(BUILD_TESTING)
         COMMAND frame_test
     )
 
+    add_executable(
+        nonblocking_test
+        tests/unit/nonblocking_test.cpp
+    )
+
+    target_link_libraries(
+        nonblocking_test
+        PRIVATE
+        netpulse_network
+    )
+
+    target_compile_options(
+        nonblocking_test
+        PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+
+    add_test(
+        NAME nonblocking_socket
+        COMMAND nonblocking_test
+    )
+
+    add_executable(
+        epoll_test
+        tests/unit/epoll_test.cpp
+    )
+
+    target_link_libraries(
+        epoll_test
+        PRIVATE
+        netpulse_network
+    )
+
+    target_compile_options(
+        epoll_test
+        PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+
+    add_test(
+        NAME epoll_wrapper
+        COMMAND epoll_test
+    )
+
+    add_executable(
+        frame_decoder_test
+        tests/unit/frame_decoder_test.cpp
+    )
+
+    target_link_libraries(
+        frame_decoder_test
+        PRIVATE
+        netpulse_protocol
+    )
+
+    target_compile_options(
+        frame_decoder_test
+        PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+
+    add_test(
+        NAME incremental_frame_decoder
+        COMMAND frame_decoder_test
+    )
+
+    add_executable(
+        frame_write_buffer_test
+        tests/unit/frame_write_buffer_test.cpp
+    )
+
+    target_link_libraries(
+        frame_write_buffer_test
+        PRIVATE
+        netpulse_protocol
+    )
+
+    target_compile_options(
+        frame_write_buffer_test
+        PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+
+    add_test(
+        NAME nonblocking_frame_writer
+        COMMAND frame_write_buffer_test
+    )
+
+    add_executable(
+        connection_test
+        tests/unit/connection_test.cpp
+    )
+
+    target_link_libraries(
+        connection_test
+        PRIVATE
+        netpulse_server_core
+    )
+
+    target_compile_options(
+        connection_test
+        PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+
+    add_test(
+        NAME connection_state
+        COMMAND connection_test
+    )
 endif()
