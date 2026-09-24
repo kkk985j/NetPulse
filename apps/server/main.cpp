@@ -2,7 +2,8 @@
 #include "netpulse/server/event_loop.hpp"
 
 #include <arpa/inet.h>
-
+#include <cstddef>
+#include <exception>
 #include <cerrno>
 #include <cstring>
 #include <iostream>
@@ -16,6 +17,9 @@ namespace {
 
 constexpr int kServerPort{9000};
 constexpr int kListenBacklog{128};
+
+constexpr std::size_t kWorkerCount{4};
+constexpr std::size_t kTaskQueueCapacity{1024};
 
 }  // namespace
 
@@ -83,25 +87,44 @@ int main()
         return 1;
     }
 
-    EventLoop event_loop{
-        std::move(listener)
-    };
+    try
+    {
+        EventLoop event_loop{
+            std::move(listener),
+            kWorkerCount,
+            kTaskQueueCapacity
+        };
 
-    if (!event_loop.valid()) {
+        if (!event_loop.valid())
+        {
+            std::cerr
+                << "Failed to initialize event loop: "
+                << std::strerror(
+                    event_loop.errorNumber())
+                << '\n';
+
+            return 1;
+        }
+
+        std::cout
+            << "NetPulse epoll server listening on "
+            << "0.0.0.0:"
+            << kServerPort
+            << ", workers="
+            << kWorkerCount
+            << ", task_queue_capacity="
+            << kTaskQueueCapacity
+            << '\n';
+
+        return event_loop.run();
+    }
+    catch (const std::exception& exception)
+    {
         std::cerr
-            << "Failed to initialize event loop: "
-            << std::strerror(
-                event_loop.errorNumber())
+            << "Failed to create event loop: "
+            << exception.what()
             << '\n';
 
         return 1;
     }
-
-    std::cout
-        << "NetPulse epoll server listening on "
-        << "0.0.0.0:"
-        << kServerPort
-        << '\n';
-
-    return event_loop.run();
 }
