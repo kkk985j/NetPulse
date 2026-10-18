@@ -258,6 +258,90 @@ NetPulse/
 - 尚未完成长期压力测试与性能基准测试。
 - 尚未实现完整的 `SIGINT`/`SIGTERM` 优雅停机流程。
 
+
+## 代码注释规范
+
+本项目统一使用 [Doxygen](https://www.doxygen.nl/manual/docblocks.html) 风格编写 C++ 接口文档。
+
+### 基本约定
+
+- 注释使用中文，代码标识符、类型名和函数名保持英文。
+- 头文件中的公开类型、函数和方法使用 `///` 文档注释。
+- 函数注释应说明作用、参数、返回值、错误情况和必要的使用约束。
+- 枚举项及简单数据成员使用 `///<` 行尾注释。
+- `.cpp` 文件中的实现注释使用普通 `//`。
+- 实现注释主要解释设计原因、边界条件、资源所有权、并发约束和错误处理。
+- 不为明显的语法、简单赋值、`#include` 或大括号添加重复代码含义的注释。
+- 修改代码行为时，必须同步更新相关注释。
+
+### 常用 Doxygen 标记
+
+| 标记 | 用途 |
+|---|---|
+| `@brief` | 简要说明类型或函数的作用 |
+| `@param[in]` | 输入参数 |
+| `@param[out]` | 输出参数 |
+| `@param[in,out]` | 同时作为输入和输出的参数 |
+| `@return` | 说明函数返回值 |
+| `@retval` | 说明某个具体返回值的含义 |
+| `@note` | 补充使用说明 |
+| `@warning` | 标记重要风险或限制 |
+| `@throws` | 说明可能抛出的异常 |
+
+### 头文件接口示例
+
+```cpp
+/// @brief 将 JSON 文本解析为遥测业务记录.
+///
+/// @param[in] payload 待解析的 JSON 文本；函数不会持有该数据。
+///
+/// @return 包含解析状态、遥测记录或错误信息的解析结果。
+[[nodiscard]] TelemetryParseResult parseTelemetry(
+    std::string_view payload);
+```
+
+### 枚举与成员示例
+
+```cpp
+/// @brief 遥测数据的解析状态。
+enum class TelemetryParseStatus
+{
+    Success,           ///< 解析及业务校验成功。
+    InvalidJson,       ///< 输入不是合法 JSON。
+    MissingField,      ///< 缺少必需字段。
+    InvalidFieldType   ///< 字段类型不符合要求。
+};
+
+struct TelemetryRecord
+{
+    std::string device_id{};  ///< 设备标识。
+    double temperature{0.0};  ///< 温度值。
+    double humidity{0.0};     ///< 相对湿度。
+};
+```
+
+### 实现注释示例
+
+```cpp
+// 在访问具体字段前检查根节点类型，避免将数组或标量误判为遥测对象。
+if (!document.is_object()) {
+    return makeError(
+        TelemetryParseStatus::ExpectedObject,
+        "JSON root must be an object");
+}
+```
+
+实现注释应解释为什么需要该判断，而不是简单重复代码：
+
+```cpp
+// 不推荐：检查 document 是否为 object。
+if (!document.is_object()) {
+    // ...
+}
+```
+
+新增或修改公开接口时，应同时检查对应的 Doxygen 注释是否仍与实际行为一致。
+
 ## 贡献指南
 
 欢迎通过 Issue 或 Pull Request 参与项目改进。
@@ -294,10 +378,5 @@ git commit -m "feat: describe your change"
 
 ## 联系方式
 
-- 仓库地址：`TODO: 补充 GitHub 仓库地址`
-- 作者：`TODO: 补充作者名称`
-- 联系方式：`TODO: 补充邮箱或其他联系方式`
 
 ## 许可证
-
-`TODO: 补充许可证类型，例如 MIT License。`

@@ -12,6 +12,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(Threads REQUIRED)
+find_package(nlohmann_json 3.2.0 REQUIRED)
 
 
 add_library(
@@ -96,6 +97,33 @@ target_compile_options(
 
 
 add_library(
+    netpulse_telemetry
+    STATIC
+    src/telemetry/telemetry_parser.cpp
+)
+
+target_include_directories(
+    netpulse_telemetry
+    PUBLIC
+    ${PROJECT_SOURCE_DIR}/include
+)
+
+target_link_libraries(
+    netpulse_telemetry
+    PUBLIC
+    nlohmann_json::nlohmann_json
+)
+
+target_compile_options(
+    netpulse_telemetry
+    PRIVATE
+    -Wall
+    -Wextra
+    -Wpedantic
+)
+
+
+add_library(
     netpulse_server_core
     STATIC
     src/server/connection.cpp
@@ -115,6 +143,8 @@ target_link_libraries(
     PUBLIC
     netpulse_protocol
     netpulse_concurrency
+    PRIVATE
+    netpulse_telemetry
 )
 
 target_compile_options(
@@ -393,7 +423,8 @@ if(BUILD_TESTING)
         COMMAND bounded_queue_test
     )
 
-        add_executable(
+
+    add_executable(
         thread_pool_test
         tests/unit/thread_pool_test.cpp
     )
@@ -417,7 +448,8 @@ if(BUILD_TESTING)
         COMMAND thread_pool_test
     )
 
-        add_executable(
+
+    add_executable(
         event_fd_test
         tests/unit/event_fd_test.cpp
     )
@@ -441,7 +473,8 @@ if(BUILD_TESTING)
         COMMAND event_fd_test
     )
 
-        add_executable(
+
+    add_executable(
         processing_test
         tests/unit/processing_test.cpp
     )
@@ -465,7 +498,8 @@ if(BUILD_TESTING)
         COMMAND processing_test
     )
 
-        add_executable(
+
+    add_executable(
         processing_dispatcher_test
         tests/unit/processing_dispatcher_test.cpp
     )
@@ -487,5 +521,30 @@ if(BUILD_TESTING)
     add_test(
         NAME processing_dispatcher
         COMMAND processing_dispatcher_test
+    )
+
+
+    add_executable(
+        telemetry_parser_test
+        tests/unit/telemetry_parser_test.cpp
+    )
+
+    target_link_libraries(
+        telemetry_parser_test
+        PRIVATE
+        netpulse_telemetry
+    )
+
+    target_compile_options(
+        telemetry_parser_test
+        PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+
+    add_test(
+        NAME telemetry_parser
+        COMMAND telemetry_parser_test
     )
 endif()
