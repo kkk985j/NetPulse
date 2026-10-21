@@ -1,6 +1,7 @@
 #include "netpulse/server/processing_dispatcher.hpp"
 
 #include <cerrno>
+#include <memory>
 #include <utility>
 
 namespace netpulse::server {
@@ -21,10 +22,48 @@ ProcessingDispatcher::ProcessingDispatcher(
     }
 }
 
+ProcessingDispatcher::ProcessingDispatcher(
+    std::size_t worker_count,
+    std::size_t task_queue_capacity,
+    const netpulse::storage::DatabaseConfig&
+        database_config)
+    : connection_pool_{
+          std::make_unique<
+              netpulse::storage::MySqlConnectionPool>(
+                  database_config,
+                  worker_count)}
+    , pool_{
+          worker_count,
+          task_queue_capacity}
+{
+    if (!notifier_.valid())
+    {
+        error_number_.store(
+            notifier_.errorNumber());
+
+        pool_.stop();
+        return;
+    }
+
+    if (!connection_pool_->valid())
+    {
+        // MySQL 客户端错误码与 errno 不属于同一错误空间，
+        // 对 EventLoop 使用通用 I/O 错误表示初始化失败。
+        error_number_.store(EIO);
+        pool_.stop();
+    }
+}
+
 bool ProcessingDispatcher::valid() const noexcept
 {
-    return notifier_.valid() &&
-        error_number_.load() == 0;
+    const bool connection_pool_valid{
+        connection_pool_ == nullptr
+            || connection_pool_->valid()
+    };
+
+    return notifier_.valid()
+        && connection_pool_valid
+        && error_number_.load() == 0;
 }
 
 int ProcessingDispatcher::errorNumber() const noexcept
@@ -52,8 +91,8 @@ ProcessingDispatcher::trySubmit(
 {
     using netpulse::concurrency::SubmitStatus;
 
-    if (task.client_fd < 0 ||
-        task.connection_id == 0)
+    if (task.client_fd < 0
+        || task.connection_id == 0)
     {
         return SubmitStatus::InvalidTask;
     }
@@ -66,8 +105,33 @@ ProcessingDispatcher::trySubmit(
     return pool_.trySubmit(
         [this, task = std::move(task)]() mutable
         {
+            if (connection_pool_ == nullptr)
+            {
+                publish(
+                    processFrame(
+                        std::move(task)));
+
+                return;
+            }
+
+            auto lease{
+                connection_pool_->acquire()
+            };
+
+            if (!lease.has_value())
+            {
+                publish(
+                    processFrame(
+                        std::move(task),
+                        nullptr));
+
+                return;
+            }
+
             publish(
-                processFrame(std::move(task)));
+                processFrame(
+                    std::move(task),
+                    &lease->connection()));
         });
 }
 
@@ -112,16 +176,18 @@ void ProcessingDispatcher::publish(
 {
     {
         std::lock_guard lock{completed_mutex_};
-        completed_.push_back(std::move(result));
+
+        completed_.push_back(
+            std::move(result));
     }
 
     const auto notify_result{
         notifier_.notify()
     };
 
-    if (!notify_result.success &&
-        notify_result.error_number != EAGAIN &&
-        notify_result.error_number != EWOULDBLOCK)
+    if (!notify_result.success
+        && notify_result.error_number != EAGAIN
+        && notify_result.error_number != EWOULDBLOCK)
     {
         int expected_error{0};
 

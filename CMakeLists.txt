@@ -12,6 +12,21 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(Threads REQUIRED)
+find_package(nlohmann_json 3.2.0 REQUIRED)
+find_package(PkgConfig REQUIRED)
+
+pkg_check_modules(
+    MySQL
+    REQUIRED
+    IMPORTED_TARGET
+    mysqlclient
+)
+
+option(
+    NETPULSE_ENABLE_INTEGRATION_TESTS
+    "Enable tests that require external services"
+    OFF
+)
 
 
 add_library(
@@ -96,6 +111,63 @@ target_compile_options(
 
 
 add_library(
+    netpulse_telemetry
+    STATIC
+    src/telemetry/telemetry_parser.cpp
+)
+
+target_include_directories(
+    netpulse_telemetry
+    PUBLIC
+    ${PROJECT_SOURCE_DIR}/include
+)
+
+target_link_libraries(
+    netpulse_telemetry
+    PUBLIC
+    nlohmann_json::nlohmann_json
+)
+
+target_compile_options(
+    netpulse_telemetry
+    PRIVATE
+    -Wall
+    -Wextra
+    -Wpedantic
+)
+
+
+add_library(
+    netpulse_storage
+    STATIC
+    src/storage/database_config.cpp
+    src/storage/mysql_connection.cpp
+    src/storage/mysql_connection_pool.cpp
+    src/storage/telemetry_repository.cpp
+)
+
+target_include_directories(
+    netpulse_storage
+    PUBLIC
+    ${PROJECT_SOURCE_DIR}/include
+)
+
+target_link_libraries(
+    netpulse_storage
+    PUBLIC
+    PkgConfig::MySQL
+)
+
+target_compile_options(
+    netpulse_storage
+    PRIVATE
+    -Wall
+    -Wextra
+    -Wpedantic
+)
+
+
+add_library(
     netpulse_server_core
     STATIC
     src/server/connection.cpp
@@ -115,6 +187,9 @@ target_link_libraries(
     PUBLIC
     netpulse_protocol
     netpulse_concurrency
+    PRIVATE
+    netpulse_telemetry
+    netpulse_storage
 )
 
 target_compile_options(
@@ -135,6 +210,7 @@ target_link_libraries(
     netpulse_server
     PRIVATE
     netpulse_server_core
+    netpulse_storage
 )
 
 target_compile_options(
@@ -393,7 +469,8 @@ if(BUILD_TESTING)
         COMMAND bounded_queue_test
     )
 
-        add_executable(
+
+    add_executable(
         thread_pool_test
         tests/unit/thread_pool_test.cpp
     )
@@ -417,7 +494,8 @@ if(BUILD_TESTING)
         COMMAND thread_pool_test
     )
 
-        add_executable(
+
+    add_executable(
         event_fd_test
         tests/unit/event_fd_test.cpp
     )
@@ -441,7 +519,8 @@ if(BUILD_TESTING)
         COMMAND event_fd_test
     )
 
-        add_executable(
+
+    add_executable(
         processing_test
         tests/unit/processing_test.cpp
     )
@@ -465,7 +544,8 @@ if(BUILD_TESTING)
         COMMAND processing_test
     )
 
-        add_executable(
+
+    add_executable(
         processing_dispatcher_test
         tests/unit/processing_dispatcher_test.cpp
     )
@@ -488,4 +568,150 @@ if(BUILD_TESTING)
         NAME processing_dispatcher
         COMMAND processing_dispatcher_test
     )
+
+
+    add_executable(
+        telemetry_parser_test
+        tests/unit/telemetry_parser_test.cpp
+    )
+
+    target_link_libraries(
+        telemetry_parser_test
+        PRIVATE
+        netpulse_telemetry
+    )
+
+    target_compile_options(
+        telemetry_parser_test
+        PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+
+    add_test(
+        NAME telemetry_parser
+        COMMAND telemetry_parser_test
+    )
+
+
+    add_executable(
+        database_config_test
+        tests/unit/database_config_test.cpp
+    )
+
+    target_link_libraries(
+        database_config_test
+        PRIVATE
+        netpulse_storage
+    )
+
+    target_compile_options(
+        database_config_test
+        PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+
+    add_test(
+        NAME database_config
+        COMMAND database_config_test
+    )
+
+
+        if(NETPULSE_ENABLE_INTEGRATION_TESTS)
+        add_executable(
+            mysql_connection_test
+            tests/integration/mysql_connection_test.cpp
+        )
+
+        target_link_libraries(
+            mysql_connection_test
+            PRIVATE
+            netpulse_storage
+        )
+
+        target_compile_options(
+            mysql_connection_test
+            PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+        )
+
+        add_test(
+            NAME mysql_connection
+            COMMAND mysql_connection_test
+        )
+
+        set_tests_properties(
+            mysql_connection
+            PROPERTIES
+            LABELS integration
+        )
+
+
+        add_executable(
+            telemetry_repository_test
+            tests/integration/telemetry_repository_test.cpp
+        )
+
+        target_link_libraries(
+            telemetry_repository_test
+            PRIVATE
+            netpulse_storage
+            netpulse_telemetry
+        )
+
+        target_compile_options(
+            telemetry_repository_test
+            PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+        )
+
+        add_test(
+            NAME telemetry_repository
+            COMMAND telemetry_repository_test
+        )
+
+        set_tests_properties(
+            telemetry_repository
+            PROPERTIES
+            LABELS integration
+        )
+
+
+        add_executable(
+            mysql_connection_pool_test
+            tests/integration/mysql_connection_pool_test.cpp
+        )
+
+        target_link_libraries(
+            mysql_connection_pool_test
+            PRIVATE
+            netpulse_storage
+        )
+
+        target_compile_options(
+            mysql_connection_pool_test
+            PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+        )
+
+        add_test(
+            NAME mysql_connection_pool
+            COMMAND mysql_connection_pool_test
+        )
+
+        set_tests_properties(
+            mysql_connection_pool
+            PROPERTIES
+            LABELS integration
+        )
+    endif()
 endif()

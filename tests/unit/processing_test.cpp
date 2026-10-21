@@ -6,18 +6,19 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <vector>
 #include <utility>
+#include <vector>
 
 using netpulse::server::ProcessingTask;
 using netpulse::server::processFrame;
 
 namespace {
 
-void require(bool condition, const char* message)
+void require(
+    bool condition,
+    const char* message)
 {
-    if (!condition)
-    {
+    if (!condition) {
         throw std::runtime_error{message};
     }
 }
@@ -42,6 +43,10 @@ std::vector<std::byte> toBytes(
 std::string toString(
     const std::vector<std::byte>& bytes)
 {
+    if (bytes.empty()) {
+        return {};
+    }
+
     return {
         reinterpret_cast<const char*>(
             bytes.data()),
@@ -55,7 +60,11 @@ void testPreservesConnectionIdentity()
         42,
         1001,
         toBytes(
-            R"({"device_id":"sensor-001"})")
+            R"({
+                "device_id": "sensor-001",
+                "temperature": 25.4,
+                "humidity": 61
+            })")
     };
 
     const auto result{
@@ -71,12 +80,17 @@ void testPreservesConnectionIdentity()
         "result must preserve connection id");
 }
 
-void testProducesAckResponse()
+void testProducesAckForValidTelemetry()
 {
     ProcessingTask task{
         7,
         2002,
-        toBytes("telemetry")
+        toBytes(
+            R"({
+                "device_id": "sensor-001",
+                "temperature": 25.4,
+                "humidity": 61
+            })")
     };
 
     const auto result{
@@ -84,16 +98,57 @@ void testProducesAckResponse()
     };
 
     require(
-        toString(result.response) ==
-            "ACK from NetPulse!",
-        "processing must produce ACK response");
+        toString(result.response)
+            == "ACK from NetPulse!",
+        "valid telemetry must produce ACK response");
 }
 
-void testAcceptsEmptyPayload()
+void testRejectsInvalidJson()
+{
+    ProcessingTask task{
+        8,
+        3003,
+        toBytes(
+            R"({"device_id":)")
+    };
+
+    const auto result{
+        processFrame(std::move(task))
+    };
+
+    require(
+        toString(result.response)
+            == "ERROR: payload is not valid JSON",
+        "invalid JSON must produce an error response");
+}
+
+void testRejectsMissingField()
 {
     ProcessingTask task{
         9,
-        3003,
+        4004,
+        toBytes(
+            R"({
+                "device_id": "sensor-001",
+                "temperature": 25.4
+            })")
+    };
+
+    const auto result{
+        processFrame(std::move(task))
+    };
+
+    require(
+        toString(result.response)
+            == "ERROR: missing required field: humidity",
+        "missing field must produce an error response");
+}
+
+void testRejectsEmptyPayload()
+{
+    ProcessingTask task{
+        10,
+        5005,
         {}
     };
 
@@ -102,23 +157,23 @@ void testAcceptsEmptyPayload()
     };
 
     require(
-        toString(result.response) ==
-            "ACK from NetPulse!",
-        "empty payload must still produce ACK");
+        toString(result.response)
+            == "ERROR: payload is empty",
+        "empty payload must produce an error response");
 }
 
 } // namespace
 
 int main()
 {
-    try
-    {
+    try {
         testPreservesConnectionIdentity();
-        testProducesAckResponse();
-        testAcceptsEmptyPayload();
+        testProducesAckForValidTelemetry();
+        testRejectsInvalidJson();
+        testRejectsMissingField();
+        testRejectsEmptyPayload();
     }
-    catch (const std::exception& exception)
-    {
+    catch (const std::exception& exception) {
         std::cerr
             << "processing_test failed: "
             << exception.what()
@@ -127,6 +182,8 @@ int main()
         return 1;
     }
 
-    std::cout << "processing_test passed\n";
+    std::cout
+        << "processing_test passed\n";
+
     return 0;
 }

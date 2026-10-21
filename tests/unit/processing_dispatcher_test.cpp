@@ -2,13 +2,14 @@
 #include "netpulse/server/processing_dispatcher.hpp"
 
 #include <array>
-#include <chrono>
 #include <cstddef>
 #include <iostream>
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <sys/epoll.h>
+#include <vector>
 
 using netpulse::concurrency::SubmitStatus;
 using netpulse::network::Epoll;
@@ -17,17 +18,39 @@ using netpulse::server::ProcessingTask;
 
 namespace {
 
-void require(bool condition, const char* message)
+void require(
+    bool condition,
+    const char* message)
 {
-    if (!condition)
-    {
+    if (!condition) {
         throw std::runtime_error{message};
     }
+}
+
+std::vector<std::byte> toBytes(
+    std::string_view text)
+{
+    const auto bytes{
+        std::as_bytes(
+            std::span{
+                text.data(),
+                text.size()
+            })
+    };
+
+    return {
+        bytes.begin(),
+        bytes.end()
+    };
 }
 
 std::string toString(
     const std::vector<std::byte>& bytes)
 {
+    if (bytes.empty()) {
+        return {};
+    }
+
     return {
         reinterpret_cast<const char*>(
             bytes.data()),
@@ -90,7 +113,13 @@ void testPublishesCompletedResult()
             ProcessingTask{
                 42,
                 1001,
-                {}})
+                toBytes(
+                    R"({
+                        "device_id": "sensor-001",
+                        "temperature": 25.4,
+                        "humidity": 61
+                    })")
+            })
     };
 
     require(
@@ -130,7 +159,9 @@ void testPublishesCompletedResult()
         notification.value >= 1,
         "notification count must be positive");
 
-    auto results{dispatcher.takeCompleted()};
+    auto results{
+        dispatcher.takeCompleted()
+    };
 
     require(
         results.size() == 1,
@@ -147,7 +178,7 @@ void testPublishesCompletedResult()
     require(
         toString(results[0].response) ==
             "ACK from NetPulse!",
-        "result must contain ACK response");
+        "valid telemetry must produce ACK response");
 
     require(
         dispatcher.takeCompleted().empty(),
@@ -167,7 +198,8 @@ void testRejectsTasksAfterStop()
             ProcessingTask{
                 8,
                 2002,
-                {}})
+                {}
+            })
     };
 
     require(
@@ -179,14 +211,12 @@ void testRejectsTasksAfterStop()
 
 int main()
 {
-    try
-    {
+    try {
         testRejectsInvalidTask();
         testPublishesCompletedResult();
         testRejectsTasksAfterStop();
     }
-    catch (const std::exception& exception)
-    {
+    catch (const std::exception& exception) {
         std::cerr
             << "processing_dispatcher_test failed: "
             << exception.what()

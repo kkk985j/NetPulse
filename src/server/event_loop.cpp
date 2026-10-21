@@ -28,11 +28,14 @@ constexpr std::uint32_t kClientEvents{
 EventLoop::EventLoop(
     netpulse::network::Socket listener,
     std::size_t worker_count,
-    std::size_t task_queue_capacity)
-    : listener_{std::move(listener)},
-      dispatcher_{
+    std::size_t task_queue_capacity,
+    netpulse::storage::DatabaseConfig
+        database_config)
+    : listener_{std::move(listener)}
+    , dispatcher_{
           worker_count,
-          task_queue_capacity}
+          task_queue_capacity,
+          database_config}
 {
     using netpulse::network::setNonBlocking;
 
