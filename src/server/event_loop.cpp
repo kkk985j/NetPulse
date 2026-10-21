@@ -35,7 +35,7 @@ EventLoop::EventLoop(
     , dispatcher_{
           worker_count,
           task_queue_capacity,
-          std::move(database_config)}
+          database_config}
 {
     using netpulse::network::setNonBlocking;
 

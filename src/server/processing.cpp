@@ -1,6 +1,5 @@
 #include "netpulse/server/processing.hpp"
 
-#include "netpulse/storage/mysql_connection.hpp"
 #include "netpulse/storage/telemetry_repository.hpp"
 #include "netpulse/telemetry/telemetry_parser.hpp"
 
@@ -123,8 +122,8 @@ ProcessingResult processFrame(
 
 ProcessingResult processFrame(
     ProcessingTask task,
-    const netpulse::storage::DatabaseConfig&
-        database_config)
+    netpulse::storage::MySqlConnection*
+        connection)
 {
     const auto parse_result{
         netpulse::telemetry::parseTelemetry(
@@ -138,20 +137,16 @@ ProcessingResult processFrame(
             parse_result.error_message);
     }
 
-    netpulse::storage::MySqlConnection connection{
-        database_config
-    };
-
-    if (!connection.valid())
+    if (connection == nullptr
+        || !connection->valid())
     {
-        // 不把数据库主机、账号或底层错误直接返回给客户端。
         return makeErrorResult(
             task,
             kDatabaseConnectionError);
     }
 
     netpulse::storage::TelemetryRepository repository{
-        connection
+        *connection
     };
 
     const auto insert_result{
@@ -161,7 +156,7 @@ ProcessingResult processFrame(
 
     if (!insert_result)
     {
-        // 详细的数据库错误不应通过网络协议泄漏给设备。
+        // 不向设备泄漏数据库地址、账号或底层 SQL 错误。
         return makeErrorResult(
             task,
             kDatabaseInsertError);

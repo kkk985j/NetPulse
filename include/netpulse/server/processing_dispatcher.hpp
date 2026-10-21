@@ -4,12 +4,13 @@
 #include "netpulse/network/event_fd.hpp"
 #include "netpulse/server/processing.hpp"
 #include "netpulse/storage/database_config.hpp"
+#include "netpulse/storage/mysql_connection_pool.hpp"
 
 #include <atomic>
 #include <cstddef>
 #include <deque>
+#include <memory>
 #include <mutex>
-#include <optional>
 #include <vector>
 
 namespace netpulse::server {
@@ -28,14 +29,17 @@ public:
         std::size_t worker_count,
         std::size_t task_queue_capacity);
 
-    /// @brief 创建支持数据库持久化的任务调度器。
-    /// @param worker_count 工作线程数量。
+    /// @brief 创建使用 MySQL 连接池的任务调度器。
+    ///
+    /// 数据库连接池容量与工作线程数量一致。
+    ///
+    /// @param worker_count 工作线程数量和数据库连接池容量。
     /// @param task_queue_capacity 最大等待任务数量。
     /// @param database_config 数据库连接配置。
     ProcessingDispatcher(
         std::size_t worker_count,
         std::size_t task_queue_capacity,
-        netpulse::storage::DatabaseConfig
+        const netpulse::storage::DatabaseConfig&
             database_config);
 
     ProcessingDispatcher(
@@ -51,7 +55,7 @@ public:
         ProcessingDispatcher&&) = delete;
 
     /// @brief 判断调度器是否可以接收任务。
-    /// @return 调度器有效时返回 true，否则返回 false。
+    /// @return 调度器及连接池有效时返回 true。
     [[nodiscard]] bool valid() const noexcept;
 
     /// @brief 获取调度器最近一次后台错误码。
@@ -95,9 +99,10 @@ private:
 
     std::atomic<int> error_number_{0};
 
-    // 配置构造完成后不再修改，可以被多个 Worker 并发读取。
-    std::optional<netpulse::storage::DatabaseConfig>
-        database_config_{};
+    // 必须在线程池之前构造，并在线程池之后析构。
+    std::unique_ptr<
+        netpulse::storage::MySqlConnectionPool>
+        connection_pool_{};
 
     // 必须放在最后，使其析构时最先停止并等待工作线程。
     netpulse::concurrency::ThreadPool pool_;

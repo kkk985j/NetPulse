@@ -1,6 +1,6 @@
 #pragma once
 
-#include "netpulse/storage/database_config.hpp"
+#include "netpulse/storage/mysql_connection.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -28,7 +28,7 @@ struct ProcessingResult
 
 /// @brief 解析并校验客户端遥测帧。
 ///
-/// 此重载不执行数据库写入，主要供不依赖外部数据库的单元测试使用。
+/// 此重载不执行数据库写入，主要供不依赖数据库的单元测试使用。
 ///
 /// @param task 等待处理的数据帧。
 /// @return 保留连接身份并携带业务响应的处理结果。
@@ -37,14 +37,15 @@ struct ProcessingResult
 
 /// @brief 解析、校验并持久化客户端遥测帧。
 ///
-/// 数据库连接在调用线程内创建，不会在多个 Worker 之间共享。
+/// 数据库连接由调用方管理，该函数不会取得连接所有权。
+/// connection 为空时返回数据库不可用错误。
 ///
 /// @param task 等待处理的数据帧。
-/// @param database_config 数据库连接配置。
+/// @param connection 当前 Worker 从连接池取得的数据库连接。
 /// @return 保留连接身份并携带业务响应的处理结果。
 [[nodiscard]] ProcessingResult processFrame(
     ProcessingTask task,
-    const netpulse::storage::DatabaseConfig&
-        database_config);
+    netpulse::storage::MySqlConnection*
+        connection);
 
 } // namespace netpulse::server

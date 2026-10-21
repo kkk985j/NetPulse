@@ -142,6 +142,7 @@ add_library(
     STATIC
     src/storage/database_config.cpp
     src/storage/mysql_connection.cpp
+    src/storage/mysql_connection_pool.cpp
     src/storage/telemetry_repository.cpp
 )
 
@@ -619,7 +620,7 @@ if(BUILD_TESTING)
     )
 
 
-    if(NETPULSE_ENABLE_INTEGRATION_TESTS)
+        if(NETPULSE_ENABLE_INTEGRATION_TESTS)
         add_executable(
             mysql_connection_test
             tests/integration/mysql_connection_test.cpp
@@ -678,6 +679,37 @@ if(BUILD_TESTING)
 
         set_tests_properties(
             telemetry_repository
+            PROPERTIES
+            LABELS integration
+        )
+
+
+        add_executable(
+            mysql_connection_pool_test
+            tests/integration/mysql_connection_pool_test.cpp
+        )
+
+        target_link_libraries(
+            mysql_connection_pool_test
+            PRIVATE
+            netpulse_storage
+        )
+
+        target_compile_options(
+            mysql_connection_pool_test
+            PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+        )
+
+        add_test(
+            NAME mysql_connection_pool
+            COMMAND mysql_connection_pool_test
+        )
+
+        set_tests_properties(
+            mysql_connection_pool
             PROPERTIES
             LABELS integration
         )
