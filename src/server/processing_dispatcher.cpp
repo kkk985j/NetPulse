@@ -21,10 +21,30 @@ ProcessingDispatcher::ProcessingDispatcher(
     }
 }
 
+ProcessingDispatcher::ProcessingDispatcher(
+    std::size_t worker_count,
+    std::size_t task_queue_capacity,
+    netpulse::storage::DatabaseConfig
+        database_config)
+    : database_config_{
+          std::move(database_config)}
+    , pool_{
+          worker_count,
+          task_queue_capacity}
+{
+    if (!notifier_.valid())
+    {
+        error_number_.store(
+            notifier_.errorNumber());
+
+        pool_.stop();
+    }
+}
+
 bool ProcessingDispatcher::valid() const noexcept
 {
-    return notifier_.valid() &&
-        error_number_.load() == 0;
+    return notifier_.valid()
+        && error_number_.load() == 0;
 }
 
 int ProcessingDispatcher::errorNumber() const noexcept
@@ -52,8 +72,8 @@ ProcessingDispatcher::trySubmit(
 {
     using netpulse::concurrency::SubmitStatus;
 
-    if (task.client_fd < 0 ||
-        task.connection_id == 0)
+    if (task.client_fd < 0
+        || task.connection_id == 0)
     {
         return SubmitStatus::InvalidTask;
     }
@@ -66,8 +86,21 @@ ProcessingDispatcher::trySubmit(
     return pool_.trySubmit(
         [this, task = std::move(task)]() mutable
         {
-            publish(
-                processFrame(std::move(task)));
+            ProcessingResult result;
+
+            if (database_config_.has_value())
+            {
+                result = processFrame(
+                    std::move(task),
+                    database_config_.value());
+            }
+            else
+            {
+                result = processFrame(
+                    std::move(task));
+            }
+
+            publish(std::move(result));
         });
 }
 
@@ -112,16 +145,17 @@ void ProcessingDispatcher::publish(
 {
     {
         std::lock_guard lock{completed_mutex_};
-        completed_.push_back(std::move(result));
+        completed_.push_back(
+            std::move(result));
     }
 
     const auto notify_result{
         notifier_.notify()
     };
 
-    if (!notify_result.success &&
-        notify_result.error_number != EAGAIN &&
-        notify_result.error_number != EWOULDBLOCK)
+    if (!notify_result.success
+        && notify_result.error_number != EAGAIN
+        && notify_result.error_number != EWOULDBLOCK)
     {
         int expected_error{0};
 
